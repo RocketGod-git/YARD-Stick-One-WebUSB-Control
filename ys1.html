@@ -1,0 +1,637 @@
+<!--
+ *------------------------------------------------------------*
+ *|  Made by RocketGod                                       |*
+ *|  Find me at https://betaskynet.com                       |*
+ *|  Argh matey!                                             |*
+ *------------------------------------------------------------*
+ -->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="WebUSB control interface for YARD Stick One RF tool">
+    <meta name="author" content="RocketGod">
+    <title>YARD Stick One Control</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body {
+            font-family: Arial, sans-serif;
+            background-color: #1a1a1a;
+            color: #ffffff;
+            line-height: 1.6;
+            height: 100%;
+            overflow-x: hidden;
+        }
+        .container {
+            width: 100%;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 15px;
+            min-height: 100%;
+            background-color: #2d2d2d;
+            display: flex;
+            flex-direction: column;
+        }
+        h1 { font-size: 1.5rem; margin-bottom: 0.5rem; text-align: center; }
+        .intro { font-size: 0.9rem; text-align: center; margin-bottom: 1rem; color: #bbbbbb; }
+        @media (max-width: 480px) { h1 { font-size: 1.2rem; } .intro { font-size: 0.8rem; } }
+        .button-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            justify-content: center;
+            margin: 10px 0;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s ease;
+            flex: 0 1 auto;
+            min-width: 100px;
+            white-space: nowrap;
+        }
+        button:hover:not(:disabled) { background-color: #45a049; transform: translateY(-1px); }
+        button:disabled { background-color: #666; cursor: not-allowed; transform: none; }
+        #log {
+            background-color: #1a1a1a;
+            padding: 12px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            white-space: pre-wrap;
+            overflow-y: auto;
+            border: 1px solid #333;
+            flex: 1;
+            margin-top: 10px;
+            font-size: 13px;
+            max-height: 50vh;
+        }
+        .status {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 4px;
+            transition: all 0.3s ease;
+            font-size: 14px;
+            text-align: center;
+        }
+        .success { background-color: #4CAF50; }
+        .error { background-color: #f44336; }
+        .warning { background-color: #ff9800; }
+        .device-info {
+            background-color: #333;
+            padding: 12px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .info-title { color: #4CAF50; margin-bottom: 5px; font-size: 14px; }
+        .input-group { display: flex; flex-direction: column; gap: 10px; margin: 10px 0; }
+        .input-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+        label { font-size: 14px; white-space: nowrap; }
+        input, select {
+            padding: 8px;
+            border-radius: 4px;
+            border: 1px solid #333;
+            background: #1a1a1a;
+            color: #fff;
+            font-family: 'Courier New', monospace;
+            flex: 1;
+            min-width: 120px;
+        }
+        input:focus, select:focus { outline: 1px solid #4CAF50; border-color: #4CAF50; }
+        input:invalid { border-color: #f44336; }
+        @media (max-width: 600px) {
+            .container { padding: 10px; }
+            button { padding: 8px 12px; font-size: 13px; min-width: 90px; }
+            #log { font-size: 12px; padding: 8px; }
+            .status, .info-title, label { font-size: 13px; }
+            input, select { min-width: 100px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>YARD Stick One Control</h1>
+        <div class="intro">Connect your YS1, set frequency, modulation, and baud rate in any order, then transmit a signal or test a repeating carrier. All fields required.</div>
+        <div class="device-info">
+            <div class="info-title">YARD Stick One Status:</div>
+            <div id="deviceStatus" class="status warning">No YARD Stick One connected</div>
+        </div>
+        <div class="button-group">
+            <button id="detectButton">Connect YS1</button>
+            <button id="disconnectButton" disabled>Disconnect</button>
+            <button id="clearLogButton">Clear Log</button>
+            <button id="testCarrierButton" disabled>Test Carrier</button>
+        </div>
+        <div class="input-group">
+            <div class="input-row">
+                <label for="frequency">Frequency (30M–1G Hz):</label>
+                <input type="number" id="frequency" placeholder="433920000" min="30000000" max="1000000000" required disabled>
+                <button id="setFreqButton" disabled>Set</button>
+            </div>
+            <div class="input-row">
+                <label for="modulation">Modulation:</label>
+                <select id="modulation" required disabled>
+                    <option value="0">ASK/OOK</option>
+                    <option value="1">GFSK</option>
+                    <option value="2">FSK</option>
+                    <option value="3">MSK</option>
+                </select>
+                <button id="setModButton" disabled>Set</button>
+            </div>
+            <div class="input-row">
+                <label for="baudRate">Baud Rate (100–1M bps):</label>
+                <input type="number" id="baudRate" placeholder="9600" min="100" max="1000000" required disabled>
+                <button id="setBaudButton" disabled>Set</button>
+            </div>
+            <div class="input-row">
+                <label for="txData">Transmit Data (even-length hex, 2–510 chars):</label>
+                <input type="text" id="txData" placeholder="8EE8E88888E888880000000000000000" pattern="[0-9A-Fa-f]{2,510}" required disabled>
+                <button id="transmitButton" disabled>Transmit</button>
+            </div>
+            <div class="input-row">
+                <button id="receiveButton" disabled>Start Receive</button>
+                <button id="stopReceiveButton" disabled>Stop Receive</button>
+            </div>
+        </div>
+        <div id="log"></div>
+    </div>
+
+    <script>
+        const USB_REQUEST_TYPE = 0x40;
+        const CMD_PEEK = 0x00;
+        const CMD_POKE = 0x01;
+        const CMD_TX = 0x03;
+        const CMD_RX = 0x04;
+        const CMD_RFMODE = 0x05;
+        const RF_MODE_TX = 0x01;
+        const RF_MODE_RX = 0x02;
+        const RF_MODE_IDLE = 0x00;
+        const CC1111_FREQ_BASE = 26000000;
+        const RETRY_COUNT = 3;
+        const TIMEOUT_MS = 5000;
+
+        let device = null;
+        let interfaceNum = null;
+        let outEndpoint, inEndpoint;
+        let isReceiving = false;
+        let receiveAbortController = null;
+
+        const log = document.getElementById('log');
+        const deviceStatus = document.getElementById('deviceStatus');
+        const detectButton = document.getElementById('detectButton');
+        const disconnectButton = document.getElementById('disconnectButton');
+        const clearLogButton = document.getElementById('clearLogButton');
+        const testCarrierButton = document.getElementById('testCarrierButton');
+        const frequencyInput = document.getElementById('frequency');
+        const setFreqButton = document.getElementById('setFreqButton');
+        const modulationSelect = document.getElementById('modulation');
+        const setModButton = document.getElementById('setModButton');
+        const baudRateInput = document.getElementById('baudRate');
+        const setBaudButton = document.getElementById('setBaudButton');
+        const txDataInput = document.getElementById('txData');
+        const transmitButton = document.getElementById('transmitButton');
+        const receiveButton = document.getElementById('receiveButton');
+        const stopReceiveButton = document.getElementById('stopReceiveButton');
+
+        let frequency = 433920000;
+        let modulation = 0;
+        let baudRate = 9600;
+
+        function logMessage(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const color = type === 'error' ? '#ff4444' :
+                         type === 'success' ? '#4CAF50' :
+                         type === 'warning' ? '#ff9800' : '#bbbbbb';
+            log.innerHTML += `<span style="color: ${color}">[${timestamp}] ${message}</span>\n`;
+            log.scrollTop = log.scrollHeight;
+        }
+
+        function updateStatus(message, type = 'info') {
+            deviceStatus.textContent = message;
+            deviceStatus.className = 'status ' +
+                (type === 'error' ? 'error' : type === 'warning' ? 'warning' : 'success');
+        }
+
+        function updateInputState() {
+            const connected = !!device;
+            testCarrierButton.disabled = !connected;
+            frequencyInput.disabled = !connected;
+            setFreqButton.disabled = !connected;
+            modulationSelect.disabled = !connected;
+            setModButton.disabled = !connected;
+            baudRateInput.disabled = !connected;
+            setBaudButton.disabled = !connected;
+            txDataInput.disabled = !connected;
+            transmitButton.disabled = !connected || !txDataInput.checkValidity();
+            receiveButton.disabled = !connected || isReceiving;
+            stopReceiveButton.disabled = !connected || !isReceiving;
+        }
+
+        async function withTimeout(promise, ms) {
+            let timeoutId;
+            const timeout = new Promise((_, reject) => {
+                timeoutId = setTimeout(() => reject(new Error('Operation timed out')), ms);
+            });
+            try {
+                const result = await Promise.race([promise, timeout]);
+                clearTimeout(timeoutId);
+                return result;
+            } catch (error) {
+                clearTimeout(timeoutId);
+                throw error;
+            }
+        }
+
+        async function cleanupDevices() {
+            const devices = await navigator.usb.getDevices();
+            for (const dev of devices) {
+                try {
+                    if (dev.configuration) {
+                        await dev.open();
+                        for (const intf of dev.configuration.interfaces) {
+                            if (intf.claimed) await dev.releaseInterface(intf.interfaceNumber);
+                        }
+                        await dev.close();
+                        logMessage(`Cleaned up device: ${dev.productName || 'Unknown'}`, 'info');
+                    }
+                } catch (e) {
+                    logMessage(`Cleanup warning for ${dev.productName || 'Unknown'}: ${e.message}`, 'warning');
+                }
+            }
+        }
+
+        async function detectDevice() {
+            try {
+                await cleanupDevices();
+                logMessage('Searching for YARD Stick One...');
+                device = await navigator.usb.requestDevice({
+                    filters: [{ vendorId: 0x1d50, productId: 0x605b }]
+                });
+
+                if (device.productName !== 'YARD Stick One') {
+                    throw new Error('Connected device is not a YARD Stick One');
+                }
+
+                await device.open();
+                await device.selectConfiguration(1);
+
+                interfaceNum = null;
+                for (const intfNum of [0, 1]) {
+                    try {
+                        await withTimeout(device.claimInterface(intfNum), TIMEOUT_MS);
+                        interfaceNum = intfNum;
+                        logMessage(`Interface ${intfNum} claimed successfully`, 'success');
+                        break;
+                    } catch (e) {
+                        logMessage(`Failed to claim Interface ${intfNum}: ${e.message}`, 'warning');
+                    }
+                }
+                if (interfaceNum === null) throw new Error('Unable to claim any interface');
+
+                const endpoints = device.configuration.interfaces[interfaceNum].alternates[0].endpoints;
+                outEndpoint = endpoints.find(ep => ep.direction === 'out')?.endpointNumber;
+                inEndpoint = endpoints.find(ep => ep.direction === 'in')?.endpointNumber;
+
+                if (!outEndpoint || !inEndpoint) {
+                    throw new Error('Required endpoints not found');
+                }
+
+                logMessage('YARD Stick One detected', 'success');
+                logMessage(`Manufacturer: ${device.manufacturerName || 'Unknown'}`);
+                logMessage(`Product: ${device.productName}`);
+                logMessage(`Serial: ${device.serialNumber || 'Unknown'}`);
+                logMessage(`OUT Endpoint: ${outEndpoint}`);
+                logMessage(`IN Endpoint: ${inEndpoint}`);
+
+                await applyRadioConfig(frequency, modulation, baudRate, 255);
+                if (await setRFMode(RF_MODE_IDLE)) {
+                    logMessage('YARD Stick One connected and initialized', 'success');
+                    updateStatus('Connected to YARD Stick One', 'success');
+                    disconnectButton.disabled = false;
+                    updateInputState();
+                } else {
+                    throw new Error('Failed to initialize RF mode');
+                }
+
+            } catch (error) {
+                logMessage(`Connection error: ${error.message}`, 'error');
+                updateStatus('Connection failed', 'error');
+                await cleanupDevice();
+                device = null;
+                interfaceNum = null;
+            }
+        }
+
+        async function cleanupDevice() {
+            if (!device) return;
+            try {
+                if (interfaceNum !== null) await device.releaseInterface(interfaceNum);
+                await device.close();
+            } catch (e) {
+                logMessage(`Cleanup error: ${e.message}`, 'warning');
+            }
+        }
+
+        async function disconnectDevice() {
+            if (!device) return;
+            isReceiving = false;
+            if (receiveAbortController) receiveAbortController.abort();
+            await cleanupDevice();
+            device = null;
+            interfaceNum = null;
+            logMessage('YARD Stick One disconnected', 'success');
+            updateStatus('YARD Stick One disconnected', 'warning');
+            disconnectButton.disabled = true;
+            updateInputState();
+        }
+
+        async function sendControlTransfer(request, value, index, data = null, retries = RETRY_COUNT) {
+            if (!device) {
+                logMessage('Not connected to YARD Stick One', 'error');
+                return false;
+            }
+            for (let i = 0; i < retries; i++) {
+                try {
+                    const config = {
+                        requestType: 'vendor',
+                        recipient: 'device',
+                        request: request,
+                        value: value,
+                        index: index
+                    };
+                    logMessage(`Control Transfer Out: request=0x${request.toString(16)}, value=${value}, index=${index}, data=${data ? new Uint8Array(data).toString() : 'none'}`);
+                    const result = data instanceof ArrayBuffer
+                        ? await withTimeout(device.controlTransferOut(config, data), TIMEOUT_MS)
+                        : await withTimeout(device.controlTransferOut(config), TIMEOUT_MS);
+                    logMessage(`Control Transfer Response: status=${result.status}, bytesWritten=${result.bytesWritten}`);
+                    if (result.status === 'ok') return true;
+                    throw new Error('Control transfer failed');
+                } catch (error) {
+                    logMessage(`Control transfer attempt ${i + 1} failed: ${error.message}`, 'warning');
+                    if (i === retries - 1) {
+                        logMessage('Max retries reached', 'error');
+                        return false;
+                    }
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                }
+            }
+        }
+
+        async function applyRadioConfig(freq, mod, baud, pktLen) {
+            const freqValue = Math.floor(freq / (CC1111_FREQ_BASE / 65536));
+            const f0 = freqValue & 0xFF;
+            const f1 = (freqValue >> 8) & 0xFF;
+            const f2 = (freqValue >> 16) & 0xFF;
+            const baudExp = Math.min(Math.floor(Math.log2(baud / 100)), 7);
+            const baudMant = Math.floor((baud * Math.pow(2, 28 - baudExp)) / CC1111_FREQ_BASE);
+            const modMap = { 0: 0x00, 1: 0x30, 2: 0x10, 3: 0x70 };
+
+            await sendControlTransfer(CMD_POKE, 0x02, 0x00);
+            await sendControlTransfer(CMD_POKE, 0x01, 0x01);
+            await sendControlTransfer(CMD_POKE, 0x06, 0x02);
+            await sendControlTransfer(CMD_POKE, 0x80, 0x04);
+            await sendControlTransfer(CMD_POKE, 0x80, 0x05);
+            await sendControlTransfer(CMD_POKE, pktLen, 0x06);
+            await sendControlTransfer(CMD_POKE, 0x08, 0x08);
+            await sendControlTransfer(CMD_POKE, 0x00, 0x09);
+            await sendControlTransfer(CMD_POKE, 0x00, 0x0A);
+            await sendControlTransfer(CMD_POKE, f2, 0x0B);
+            await sendControlTransfer(CMD_POKE, f1, 0x0C);
+            await sendControlTransfer(CMD_POKE, f0, 0x0D);
+            await sendControlTransfer(CMD_POKE, 0xFF, 0x0E);
+            await sendControlTransfer(CMD_POKE, (baudExp << 4) | 0x0A, 0x10);
+            await sendControlTransfer(CMD_POKE, baudMant & 0xFF, 0x11);
+            await sendControlTransfer(CMD_POKE, modMap[mod], 0x12);
+            await sendControlTransfer(CMD_POKE, 0x22, 0x13);
+            await sendControlTransfer(CMD_POKE, 0x42, 0x14);
+            await sendControlTransfer(CMD_POKE, 0x1D, 0x17);
+            await sendControlTransfer(CMD_POKE, 0x07, 0x18);
+            await sendControlTransfer(CMD_POKE, 0x18, 0x19);
+            await sendControlTransfer(CMD_POKE, 0x33, 0x1A);
+            await sendControlTransfer(CMD_POKE, 0xB6, 0x1D);
+            await sendControlTransfer(CMD_POKE, 0x26, 0x1E);
+            await sendControlTransfer(CMD_POKE, 0x50, 0x1F);
+            await sendControlTransfer(CMD_POKE, 0x3B, 0x26);
+            await sendControlTransfer(CMD_POKE, 0x01, 0xA0);
+        }
+
+        async function transmit() {
+            const data = txDataInput.value.trim().toUpperCase();
+            if (!txDataInput.checkValidity()) {
+                logMessage('Invalid hex data: must be even-length, 2–510 hex chars', 'error');
+                return;
+            }
+            const bytes = new Uint8Array(data.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
+            logMessage(`Preparing to transmit ${bytes.length}-byte signal (repeated 8x)`);
+
+            await applyRadioConfig(frequency, modulation, baudRate, bytes.length);
+
+            if (!await setRFMode(RF_MODE_IDLE)) {
+                logMessage('Failed to reset to idle mode', 'error');
+                return;
+            }
+            await new Promise(resolve => setTimeout(resolve, 200));
+
+            if (!await setRFMode(RF_MODE_TX)) {
+                logMessage('Failed to enter TX mode', 'error');
+                return;
+            }
+            await new Promise(resolve => setTimeout(resolve, 200));
+
+            logMessage('Signaling TX start...');
+            if (!await sendControlTransfer(CMD_TX, bytes.length, 0)) {
+                logMessage('Failed to signal TX start', 'error');
+                await setRFMode(RF_MODE_IDLE);
+                return;
+            }
+
+            const repeatedData = new Uint8Array(bytes.length * 8);
+            for (let i = 0; i < 8; i++) {
+                repeatedData.set(bytes, i * bytes.length);
+            }
+
+            logMessage(`Transmitting signal to Endpoint ${outEndpoint}...`);
+            try {
+                const result = await withTimeout(device.transferOut(outEndpoint, repeatedData), TIMEOUT_MS);
+                logMessage(`Bulk Transfer Response: bytesWritten=${result.bytesWritten}`);
+                logMessage('Signal transmitting... check your receiver');
+                await new Promise(resolve => setTimeout(resolve, 10000));
+                await setRFMode(RF_MODE_IDLE);
+                logMessage('Transmission completed', 'success');
+            } catch (error) {
+                logMessage(`Bulk transfer failed: ${error.message}`, 'error');
+                await setRFMode(RF_MODE_IDLE);
+            }
+        }
+
+        async function setRFMode(mode) {
+            if (!device) return false;
+            if (await sendControlTransfer(CMD_RFMODE, mode, 0)) {
+                const modeText = mode === RF_MODE_TX ? 'TX' : mode === RF_MODE_RX ? 'RX' : 'Idle';
+                logMessage(`RF mode set to ${modeText}`);
+                return true;
+            }
+            logMessage('Failed to set RF mode', 'error');
+            return false;
+        }
+
+        async function setFrequency() {
+            const freq = parseInt(frequencyInput.value.trim());
+            if (!frequencyInput.checkValidity()) {
+                logMessage('Invalid frequency: must be 30M–1G Hz', 'error');
+                return;
+            }
+            frequency = freq;
+            await applyRadioConfig(frequency, modulation, baudRate, 255);
+            logMessage(`Frequency set to ${freq} Hz`, 'success');
+            updateInputState();
+        }
+
+        async function setModulation() {
+            modulation = parseInt(modulationSelect.value);
+            await applyRadioConfig(frequency, modulation, baudRate, 255);
+            logMessage(`Modulation set to ${modulationSelect.options[modulation].text}`, 'success');
+            updateInputState();
+        }
+
+        async function setBaudRate() {
+            const baud = parseInt(baudRateInput.value.trim());
+            if (!baudRateInput.checkValidity()) {
+                logMessage('Invalid baud rate: must be 100–1M bps', 'error');
+                return;
+            }
+            baudRate = baud;
+            await applyRadioConfig(frequency, modulation, baudRate, 255);
+            logMessage(`Baud rate set to ${baud} bps`, 'success');
+            updateInputState();
+        }
+
+        async function testCarrier() {
+            logMessage('Starting carrier test at 433.92 MHz (repeating signal)...');
+
+            const carrier = new Uint8Array([0x8E, 0xE8, 0xE8, 0x88, 0x88, 0xE8, 0x88, 0x88, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
+            await applyRadioConfig(433920000, 0, 1800, carrier.length);
+
+            if (!await setRFMode(RF_MODE_IDLE)) {
+                logMessage('Failed to reset to idle mode', 'error');
+                return;
+            }
+            await new Promise(resolve => setTimeout(resolve, 200));
+
+            if (!await setRFMode(RF_MODE_TX)) {
+                logMessage('Failed to enter TX mode', 'error');
+                return;
+            }
+            await new Promise(resolve => setTimeout(resolve, 200));
+
+            logMessage('Signaling TX start...');
+            if (!await sendControlTransfer(CMD_TX, carrier.length, 0)) {
+                logMessage('Failed to signal TX start', 'error');
+                await setRFMode(RF_MODE_IDLE);
+                return;
+            }
+
+            const repeatedCarrier = new Uint8Array(carrier.length * 20);
+            for (let i = 0; i < 20; i++) {
+                repeatedCarrier.set(carrier, i * carrier.length);
+            }
+
+            logMessage(`Transmitting carrier to Endpoint ${outEndpoint}...`);
+            try {
+                const result = await withTimeout(device.transferOut(outEndpoint, repeatedCarrier), TIMEOUT_MS);
+                logMessage(`Bulk Transfer Response: bytesWritten=${result.bytesWritten}`);
+                logMessage('Carrier transmitting... check your receiver at 433.92 MHz (±2 MHz)');
+                await new Promise(resolve => setTimeout(resolve, 10000));
+                await setRFMode(RF_MODE_IDLE);
+                logMessage('Carrier test completed', 'success');
+            } catch (error) {
+                logMessage(`Bulk transfer failed: ${error.message}`, 'error');
+                await setRFMode(RF_MODE_IDLE);
+            }
+        }
+
+        async function startReceive() {
+            if (isReceiving) return;
+            isReceiving = true;
+            receiveAbortController = new AbortController();
+            if (await setRFMode(RF_MODE_RX)) {
+                logMessage('Started receiving...', 'success');
+                updateInputState();
+                receiveLoop();
+            } else {
+                isReceiving = false;
+                updateInputState();
+            }
+        }
+
+        async function stopReceive() {
+            if (!isReceiving) return;
+            isReceiving = false;
+            if (receiveAbortController) receiveAbortController.abort();
+            await setRFMode(RF_MODE_IDLE);
+            logMessage('Stopped receiving', 'success');
+            updateInputState();
+        }
+
+        async function receiveLoop() {
+            while (isReceiving && device) {
+                try {
+                    const result = await withTimeout(device.transferIn(inEndpoint, 64), TIMEOUT_MS);
+                    if (result.data && result.data.byteLength > 0) {
+                        const hex = Array.from(new Uint8Array(result.data.buffer))
+                            .map(b => b.toString(16).padStart(2, '0').toUpperCase()).join('');
+                        logMessage(`Received: ${hex}`);
+                    }
+                } catch (error) {
+                    if (isReceiving && error.name !== 'AbortError') {
+                        logMessage(`Receive error: ${error.message}`, 'error');
+                        isReceiving = false;
+                        await setRFMode(RF_MODE_IDLE);
+                        updateInputState();
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (!navigator.usb) {
+            logMessage('WebUSB not supported in this browser', 'error');
+            updateStatus('WebUSB not supported', 'error');
+            detectButton.disabled = true;
+        } else {
+            logMessage('WebUSB supported - Ready for YARD Stick One', 'success');
+        }
+
+        detectButton.addEventListener('click', detectDevice);
+        disconnectButton.addEventListener('click', disconnectDevice);
+        clearLogButton.addEventListener('click', () => log.innerHTML = '');
+        testCarrierButton.addEventListener('click', testCarrier);
+        setFreqButton.addEventListener('click', setFrequency);
+        setModButton.addEventListener('click', setModulation);
+        setBaudButton.addEventListener('click', setBaudRate);
+        transmitButton.addEventListener('click', transmit);
+        receiveButton.addEventListener('click', startReceive);
+        stopReceiveButton.addEventListener('click', stopReceive);
+        txDataInput.addEventListener('input', updateInputState);
+
+        window.addEventListener('unload', () => disconnectDevice());
+
+        navigator.usb.addEventListener('connect', () => {
+            logMessage('USB device connected', 'info');
+            if (!device) updateStatus('Device detected but not connected', 'warning');
+        });
+
+        navigator.usb.addEventListener('disconnect', (event) => {
+            if (device === event.device) disconnectDevice();
+        });
+
+        updateInputState();
+    </script>
+</body>
+</html>
