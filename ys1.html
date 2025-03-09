@@ -127,6 +127,7 @@
             <button id="disconnectButton" disabled>Disconnect</button>
             <button id="clearLogButton">Clear Log</button>
             <button id="testCarrierButton" disabled>Test Carrier</button>
+            <button id="checkRegistersButton" disabled>Check Registers</button>
         </div>
         <div class="input-group">
             <div class="input-row">
@@ -164,8 +165,9 @@
 
     <script>
         const USB_REQUEST_TYPE = 0x40;
-        const CMD_PEEK = 0x00;
-        const CMD_POKE = 0x01;
+        const CMD_PEEK = 0x80;
+        const CMD_POKE = 0x81;
+        const CMD_PING = 0x82;
         const CMD_TX = 0x03;
         const CMD_RX = 0x04;
         const CMD_RFMODE = 0x05;
@@ -174,7 +176,7 @@
         const RF_MODE_IDLE = 0x00;
         const CC1111_FREQ_BASE = 26000000;
         const RETRY_COUNT = 3;
-        const TIMEOUT_MS = 5000;
+        const TIMEOUT_MS = 10000;
 
         let device = null;
         let interfaceNum = null;
@@ -188,6 +190,7 @@
         const disconnectButton = document.getElementById('disconnectButton');
         const clearLogButton = document.getElementById('clearLogButton');
         const testCarrierButton = document.getElementById('testCarrierButton');
+        const checkRegistersButton = document.getElementById('checkRegistersButton');
         const frequencyInput = document.getElementById('frequency');
         const setFreqButton = document.getElementById('setFreqButton');
         const modulationSelect = document.getElementById('modulation');
@@ -221,6 +224,7 @@
         function updateInputState() {
             const connected = !!device;
             testCarrierButton.disabled = !connected;
+            checkRegistersButton.disabled = !connected;
             frequencyInput.disabled = !connected;
             setFreqButton.disabled = !connected;
             modulationSelect.disabled = !connected;
@@ -445,7 +449,14 @@
             await new Promise(resolve => setTimeout(resolve, 200));
 
             logMessage('Signaling TX start...');
-            if (!await sendControlTransfer(CMD_TX, bytes.length, 0)) {
+            const txData = new Uint8Array(4 + bytes.length);
+            txData[0] = 0xFF;
+            txData[1] = CMD_TX;
+            txData[2] = bytes.length & 0xFF;
+            txData[3] = (bytes.length >> 8) & 0xFF;
+            txData.set(bytes, 4);
+            const txResult = await withTimeout(device.transferOut(outEndpoint, txData), TIMEOUT_MS);
+            if (txResult.status !== 'ok') {
                 logMessage('Failed to signal TX start', 'error');
                 await setRFMode(RF_MODE_IDLE);
                 return;
@@ -531,7 +542,14 @@
             await new Promise(resolve => setTimeout(resolve, 200));
 
             logMessage('Signaling TX start...');
-            if (!await sendControlTransfer(CMD_TX, carrier.length, 0)) {
+            const txData = new Uint8Array(4 + carrier.length);
+            txData[0] = 0xFF;
+            txData[1] = CMD_TX;
+            txData[2] = carrier.length & 0xFF;
+            txData[3] = (carrier.length >> 8) & 0xFF;
+            txData.set(carrier, 4);
+            const txResult = await withTimeout(device.transferOut(outEndpoint, txData), TIMEOUT_MS);
+            if (txResult.status !== 'ok') {
                 logMessage('Failed to signal TX start', 'error');
                 await setRFMode(RF_MODE_IDLE);
                 return;
@@ -554,6 +572,84 @@
                 logMessage(`Bulk transfer failed: ${error.message}`, 'error');
                 await setRFMode(RF_MODE_IDLE);
             }
+        }
+
+        async function checkRegisters() {
+            if (!device) {
+                logMessage('Not connected to YARD Stick One', 'error');
+                return;
+            }
+            logMessage('Checking radio configuration registers...');
+            const registers = [
+                0x00, 0x01, 0x02, 0x04, 0x05, 0x06, 0x08, 0x09, 0x0A, 0x0B,
+                0x0C, 0x0D, 0x0E, 0x10, 0x11, 0x12, 0x13, 0x14, 0x17, 0x18,
+                0x19, 0x1A, 0x1D, 0x1E, 0x1F, 0x26, 0xA0
+            ];
+
+            await setRFMode(RF_MODE_IDLE);
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            await setRFMode(RF_MODE_IDLE);
+            await new Promise(resolve => setTimeout(resolve, 1000));
+
+            logMessage('Testing CMD_PING via EP5 OUT...');
+            try {
+                const pingData = new Uint8Array([0xFF, CMD_PING, 0x00, 0x00]);
+                const pingResult = await withTimeout(device.transferOut(outEndpoint, pingData), TIMEOUT_MS);
+                logMessage(`CMD_PING OUT response: status=${pingResult.status}, bytesWritten=${pingResult.bytesWritten}`);
+                await new Promise(resolve => setTimeout(resolve, 100));
+                const pingRead = await withTimeout(device.transferIn(inEndpoint, 64), TIMEOUT_MS);
+                if (pingRead.status === 'ok' && pingRead.data) {
+                    const pingResponse = new Uint8Array(pingRead.data.buffer);
+                    logMessage(`CMD_PING IN response: ${Array.from(pingResponse).map(b => b.toString(16).padStart(2, '0')).join('')}`, 'success');
+                } else {
+                    logMessage('No CMD_PING response from EP5 IN', 'warning');
+                }
+            } catch (error) {
+                logMessage(`CMD_PING failed: ${error.message}`, 'error');
+            }
+
+            await setRFMode(RF_MODE_IDLE);
+            await new Promise(resolve => setTimeout(resolve, 500));
+
+            for (const reg of registers) {
+                try {
+                    await setRFMode(RF_MODE_IDLE);
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    const bytecount = 1;
+                    const peekData = new Uint8Array(8);
+                    peekData[0] = 0xFF;
+                    peekData[1] = CMD_PEEK;
+                    peekData[2] = bytecount & 0xFF;
+                    peekData[3] = (bytecount >> 8) & 0xFF;
+                    peekData[4] = bytecount & 0xFF;
+                    peekData[5] = (bytecount >> 8) & 0xFF;
+                    peekData[6] = reg & 0xFF;
+                    peekData[7] = (reg >> 8) & 0xFF;
+                    logMessage(`Sending CMD_PEEK to EP5 OUT for register 0x${reg.toString(16).padStart(2, '0')} with data=${Array.from(peekData).map(b => b.toString(16).padStart(2, '0')).join('')}`);
+                    const peekResult = await withTimeout(device.transferOut(outEndpoint, peekData), TIMEOUT_MS);
+                    if (peekResult.status !== 'ok') {
+                        logMessage(`Failed to send CMD_PEEK for register 0x${reg.toString(16).padStart(2, '0')}`, 'error');
+                        continue;
+                    }
+                    logMessage(`CMD_PEEK sent successfully for register 0x${reg.toString(16).padStart(2, '0')}`);
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                    const readResult = await withTimeout(device.transferIn(inEndpoint, 64), TIMEOUT_MS);
+                    if (readResult.status === 'ok' && readResult.data) {
+                        const response = new Uint8Array(readResult.data.buffer);
+                        if (response.length >= 6 && response[0] === 0x40 && response[1] === 0xFF && response[2] === CMD_PEEK) {
+                            const value = response[5];
+                            logMessage(`Register 0x${reg.toString(16).padStart(2, '0')}: 0x${value.toString(16).padStart(2, '0')}`, 'success');
+                        } else {
+                            logMessage(`Invalid CMD_PEEK response for register 0x${reg.toString(16).padStart(2, '0')}: ${Array.from(response).map(b => b.toString(16).padStart(2, '0')).join('')}`, 'warning');
+                        }
+                    } else {
+                        logMessage(`Failed to read register 0x${reg.toString(16).padStart(2, '0')}: No data returned`, 'warning');
+                    }
+                } catch (error) {
+                    logMessage(`Error reading register 0x${reg.toString(16).padStart(2, '0')}: ${error.message}`, 'error');
+                }
+            }
+            logMessage('Register check completed', 'success');
         }
 
         async function startReceive() {
@@ -612,6 +708,7 @@
         disconnectButton.addEventListener('click', disconnectDevice);
         clearLogButton.addEventListener('click', () => log.innerHTML = '');
         testCarrierButton.addEventListener('click', testCarrier);
+        checkRegistersButton.addEventListener('click', checkRegisters);
         setFreqButton.addEventListener('click', setFrequency);
         setModButton.addEventListener('click', setModulation);
         setBaudButton.addEventListener('click', setBaudRate);
