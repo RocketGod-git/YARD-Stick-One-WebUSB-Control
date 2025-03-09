@@ -1,10 +1,10 @@
 # YARD Stick One WebUSB Control Interface
-# https://github.com/RocketGod-git/YARD-Stick-One-WebUSB-Control
+https://github.com/RocketGod-git/YARD-Stick-One-WebUSB-Control
 
-# Test live at:
-# **[RocketGod's Yard Stick One Control](https://fuckyou.gay/ys1.html)** which is current to this source code.
+## Test live at:
+- **[RocketGod's Yard Stick One Control Website](https://fuckyou.gay/ys1.html)**
 
-# Made by RocketGod
+## Made by RocketGod
 
 
 ## Overview
