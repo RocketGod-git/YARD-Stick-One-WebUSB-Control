@@ -4,7 +4,7 @@ https://github.com/RocketGod-git/YARD-Stick-One-WebUSB-Control
 ## Test live at:
 - **[RocketGod's Yard Stick One Control Website](https://fuckyou.gay/ys1.html)**
 
-## Made by RocketGod
+## Created by 🚀RocketGod🚀
 
 
 ## Overview
