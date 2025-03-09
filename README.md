@@ -42,4 +42,5 @@ This project is inspired by and built for the **RF research community**. Special
 ## Notes
 This project is an independent web-based interface and is not affiliated with **Great Scott Gadgets** or **RFCat**. It's designed for responsible RF experimentation within legal limits. Just kidding, do what you want. I'm not the FCC.
 
-https://private-user-images.githubusercontent.com/57732082/264152870-7929b554-0fba-4c2b-b22d-6772d23c4a18.jpg
+![image](https://github.com/user-attachments/assets/e7fa25fc-349d-49ab-80ce-1373299aec51)
+
